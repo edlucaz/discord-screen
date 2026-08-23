@@ -11,6 +11,7 @@ import { signToken, verifyToken } from './tokens.js';
 import * as R from './rooms.js';
 import { systemSnapshot, startSampling } from './system.js';
 import { buildAdminDashboard } from './admin.js';
+import { abrirEmApp } from './chrome.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -530,6 +531,54 @@ function issueRoomTokens(roomId, me) {
     )}`,
   };
 }
+
+// ------------------------------------------------------ captura num Chrome local
+
+/** Fontes que este servidor sabe capturar — o resto é rejeitado, não ignorado. */
+const FONTES_VALIDAS = new Set(['tela', 'camera']);
+
+/** Um inteiro positivo pequeno, como texto — o formato que `q` e `fps` chegam. */
+function numeroValido(v, max) {
+  return typeof v === 'string' && /^[0-9]{1,7}$/.test(v) && Number(v) <= max;
+}
+
+/**
+ * Pede ao próprio servidor para abrir a página de captura num Chrome de
+ * verdade, no lugar do navegador padrão do sistema (ou do que o Discord
+ * escolher via openExternalLink) — que pode não ter WebCodecs. Ver
+ * `server/chrome.js` para quando isto de fato abre uma janela.
+ *
+ * A URL nunca vem pronta do corpo do pedido — só o token de transmissor que
+ * este servidor já tinha emitido, mais fonte/qualidade/fps validados um a um.
+ * Aceitar uma URL arbitrária aqui daria a qualquer requisição o poder de abrir
+ * o que quisesse na tela de quem hospeda; o token garante que só quem já tem
+ * autorização de transmitir nesta sala consegue disparar isto, do mesmo jeito
+ * que qualquer outra ação de transmissor.
+ */
+app.post('/api/abrir-captura', (req, res) => {
+  const payload = verifyToken(req.body?.t);
+  if (!payload || payload.role !== 'broadcaster') {
+    return res.status(401).json({ error: 'token invalido' });
+  }
+
+  const fonte = req.body?.fonte;
+  if (!FONTES_VALIDAS.has(fonte)) return res.status(400).json({ error: 'fonte invalida' });
+
+  // Sem endereço público conhecido, uma URL relativa não significa nada para
+  // um processo que acabou de nascer sem página nenhuma por trás — o mesmo
+  // caso em que o shareUrl já sai relativo (ver `origemDoSite` no cliente).
+  if (!PUBLIC_ORIGIN) return res.json({ aberto: false });
+
+  const url = new URL(`${PUBLIC_ORIGIN}/share.html`);
+  url.searchParams.set('t', req.body.t);
+  url.searchParams.set('fonte', fonte);
+  // Bitrate cabe em 50 Mb/s folgado; fps em 240 — acima disso é erro de quem
+  // chamou, não uma escolha de qualidade que faça sentido aceitar.
+  if (numeroValido(req.body?.q, 50_000_000)) url.searchParams.set('q', req.body.q);
+  if (numeroValido(req.body?.fps, 240)) url.searchParams.set('fps', req.body.fps);
+
+  res.json({ aberto: abrirEmApp(url.toString()) });
+});
 
 // ---------------------------------------------------------------------- salas
 

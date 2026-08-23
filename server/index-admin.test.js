@@ -10,6 +10,11 @@
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Dublê do disparo de Chrome local: os testes de /api/abrir-captura verificam
+// a URL que o servidor monta, não se um Chrome de verdade abre nesta máquina.
+const abrirEmApp = vi.fn(() => true);
+vi.mock('./chrome.js', () => ({ abrirEmApp: (...args) => abrirEmApp(...args) }));
+
 const ADMIN = '123456789012345678';
 const SEGUNDO = '222222222222222222';
 const OUTRO = '987654321098765432';
@@ -370,6 +375,54 @@ describe('/api/config', () => {
 
     expect(corpo.clientId).toBe('111111111111111111');
     expect(JSON.stringify(corpo)).not.toContain('segredo-da-aplicacao');
+  });
+});
+
+describe('/api/abrir-captura', () => {
+  const tokenTransmissor = () =>
+    signToken({ room: 'sala-1', uid: 'u1', name: 'Alice', role: 'broadcaster' });
+
+  beforeEach(() => abrirEmApp.mockClear());
+
+  it('monta a URL da captura a partir do PUBLIC_ORIGIN, não do que o pedido mandar', async () => {
+    const resposta = await post('/api/abrir-captura', {
+      t: tokenTransmissor(),
+      fonte: 'tela',
+      q: '2500000',
+      fps: '30',
+    });
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual({ aberto: true });
+
+    const [url] = abrirEmApp.mock.calls[0];
+    expect(url.startsWith('https://exemplo.test/share.html?')).toBe(true);
+    const params = new URL(url).searchParams;
+    expect(params.get('fonte')).toBe('tela');
+    expect(params.get('q')).toBe('2500000');
+    expect(params.get('fps')).toBe('30');
+  });
+
+  it('ignora q/fps fora do formato esperado, sem quebrar o pedido', async () => {
+    const resposta = await post('/api/abrir-captura', {
+      t: tokenTransmissor(),
+      fonte: 'camera',
+      q: 'DROP TABLE',
+      fps: '99999999',
+    });
+
+    expect(resposta.status).toBe(200);
+    const params = new URL(abrirEmApp.mock.calls[0][0]).searchParams;
+    expect(params.has('q')).toBe(false);
+    expect(params.has('fps')).toBe(false);
+  });
+
+  it('devolve o que o disparo do Chrome relatar, aberto ou não', async () => {
+    abrirEmApp.mockReturnValue(false);
+
+    const resposta = await post('/api/abrir-captura', { t: tokenTransmissor(), fonte: 'tela' });
+
+    expect(await resposta.json()).toEqual({ aberto: false });
   });
 });
 

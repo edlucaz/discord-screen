@@ -2146,8 +2146,38 @@ function urlDaCaptura(fonte) {
   return url;
 }
 
+/**
+ * Pede ao próprio servidor para abrir a captura num Chrome de verdade, em vez
+ * de deixar o Discord ou o sistema escolher o navegador padrão — que pode não
+ * ter WebCodecs. Só existe quando o servidor roda na mesma máquina de quem
+ * pediu, que é o caso normal deste projeto: sem Chrome instalado ali, o
+ * servidor devolve `aberto: false` e quem chamou cai para o link externo de
+ * sempre, sem diferença nenhuma no comportamento de hoje.
+ *
+ * A URL não viaja pronta: o servidor já tem o `shareUrl`, então só o token e
+ * as opções soltas fazem sentido no corpo — ver a nota em `/api/abrir-captura`.
+ */
+async function abrirNoChromeLocal(fonte) {
+  const shareToken = new URL(roomTokens.shareUrl).searchParams.get('t');
+  if (!shareToken) return false;
+
+  try {
+    const res = await fetch(`${P}/api/abrir-captura`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ t: shareToken, fonte, ...opcoesDaFonte() }),
+    });
+    if (!res.ok) return false;
+    return Boolean((await res.json()).aberto);
+  } catch {
+    return false;
+  }
+}
+
 async function abrirLink(fonte) {
   if (!roomTokens) return;
+  if (await abrirNoChromeLocal(fonte)) return;
+
   const url = urlDaCaptura(fonte).toString();
 
   if (inDiscord) {

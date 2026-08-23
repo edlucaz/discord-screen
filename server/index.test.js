@@ -349,6 +349,54 @@ describe('/api/avatar', () => {
   });
 });
 
+describe('/api/abrir-captura', () => {
+  async function tokenDeTransmissor(nome) {
+    const me = await identidade({ instance_id: `chrome-${nome}`, name: nome });
+    const sala = await (
+      await post('/api/rooms/create', { identity: me.identity, name: `Sala de ${nome}` })
+    ).json();
+    // Sem PUBLIC_ORIGIN nesta suíte o shareUrl sai relativo — base fixa só
+    // para o URL conseguir parsear, do mesmo jeito que os testes de rooms/open.
+    return new URL(sala.shareUrl, 'http://x').searchParams.get('t');
+  }
+
+  it('recusa sem um token de transmissor válido', async () => {
+    const resposta = await post('/api/abrir-captura', { t: 'forjado', fonte: 'tela' });
+
+    expect(resposta.status).toBe(401);
+  });
+
+  it('recusa o token de assistir — só o de transmissor abre a captura', async () => {
+    const me = await identidade({ instance_id: 'chrome-viewer' });
+    const sala = await (
+      await post('/api/rooms/create', { identity: me.identity, name: 'Sala' })
+    ).json();
+
+    const resposta = await post('/api/abrir-captura', { t: sala.viewerToken, fonte: 'tela' });
+
+    expect(resposta.status).toBe(401);
+  });
+
+  it('recusa fonte fora de tela/camera', async () => {
+    const t = await tokenDeTransmissor('fonte-invalida');
+
+    const resposta = await post('/api/abrir-captura', { t, fonte: 'microfone' });
+
+    expect(resposta.status).toBe(400);
+  });
+
+  it('sem PUBLIC_ORIGIN configurado, devolve aberto:false em vez de quebrar', async () => {
+    // Esta suíte roda sem PUBLIC_ORIGIN de propósito (ver vitest.setup.js); é
+    // o mesmo caso em que o shareUrl já sai relativo.
+    const t = await tokenDeTransmissor('sem-origem');
+
+    const resposta = await post('/api/abrir-captura', { t, fonte: 'tela' });
+
+    expect(resposta.status).toBe(200);
+    expect(await resposta.json()).toEqual({ aberto: false });
+  });
+});
+
 describe('/api/rooms/list', () => {
   it('não exige login: dá para ver o lobby antes de entrar', async () => {
     const resposta = await post('/api/rooms/list', {});

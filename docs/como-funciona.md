@@ -32,6 +32,25 @@ Se um dia o Discord conceder `display-capture`, o botão **"Testar captura no
 iframe"** (no painel de detalhes) passa a funcionar — e aí a aba externa pode
 sumir. A atividade já tenta capturar internamente antes de cair para a aba.
 
+### Por que essa aba nem sempre é uma aba
+
+Abrir aquela URL normalmente cai em `window.open` (fora do Discord) ou
+`sdk.commands.openExternalLink` (dentro dele) — e os dois delegam a escolha do
+programa para o sistema operacional. Se o navegador padrão de quem transmite
+não for Chromium, a captura simplesmente não existe ali: WebCodecs e
+`MediaStreamTrackProcessor` são só Chrome, Edge e afins.
+
+`server/chrome.js` evita isso quando dá: antes de cair nos dois caminhos
+acima, o cliente pede pro **próprio servidor** (`/api/abrir-captura`) disparar
+um Chromium local em modo `--app=`, sem barra de endereço nem abas — a mesma
+sensação de app nativo que o Electron dá. Só funciona porque este servidor
+quase sempre roda na mesma máquina de quem transmite; um VPS sem Chrome
+instalado não encontra nada e a chamada devolve `aberto: false`, caindo de
+volta no comportamento de sempre. A URL nunca viaja pronta no pedido — só o
+token de transmissor que o servidor já tinha emitido — porque aceitar uma URL
+qualquer ali seria dar a qualquer requisição o poder de abrir o que quisesse
+na tela de quem hospeda.
+
 ## Por que WebCodecs e não MediaRecorder
 
 A primeira versão usava `MediaRecorder` + Media Source Extensions e ficava em
@@ -203,6 +222,7 @@ server/
   index.js        HTTP + WebSocket, login do Discord, emissão de tokens
   rooms.js        salas e repasse dos quadros
   tokens.js       tokens assinados (sem biblioteca externa)
+  chrome.js       acha e dispara um Chromium local, em modo --app=
   public/share.*  a aba de captura, que roda FORA do Discord
 client/
   src/main.js     interface da sala e conexão
