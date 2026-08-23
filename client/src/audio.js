@@ -24,6 +24,29 @@ const COLCHAO = 0.08;
 // a tela e continuar empilhando só piora — melhor um corte e voltar ao vivo.
 const ATRASO_MAXIMO = COLCHAO * 4;
 
+/**
+ * Um AudioContext só, para todas as transmissões da página.
+ *
+ * Cada stream com som costumava abrir o seu — numa sala com várias
+ * transmissões ao mesmo tempo isso é uma thread de áudio inteira por
+ * transmissão, todas disputando o mesmo dispositivo de saída, por nenhum
+ * ganho real: quem carrega o sampleRate é o AudioBuffer, não o contexto — um
+ * contexto único aceita buffers em taxas diferentes e reamostra sozinho na
+ * hora de tocar, do mesmo jeito que já reamostraria se a origem não batesse
+ * com a taxa nativa do dispositivo.
+ *
+ * Criado só na primeira vez que alguém pede som, e nunca fechado: fechar
+ * exigiria saber que nenhuma transmissão vai precisar dele de novo, e a única
+ * forma de saber isso é contar referência entre instâncias independentes —
+ * mais estado para errar do que um contexto ocioso custa.
+ */
+let compartilhado = null;
+
+function contextoCompartilhado() {
+  compartilhado ??= new AudioContext({ latencyHint: 'interactive' });
+  return compartilhado;
+}
+
 export function createAudio({ onError, volume = 1 } = {}) {
   let ctx = null;
   let decoder = null;
@@ -40,9 +63,7 @@ export function createAudio({ onError, volume = 1 } = {}) {
       return false;
     }
 
-    // sampleRate igual ao da origem: deixar o navegador reamostrar acrescenta
-    // latência e artefato sem ganho nenhum.
-    ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: config.sampleRate });
+    ctx = contextoCompartilhado();
     ganho = ctx.createGain();
     ganho.gain.value = nivel;
     ganho.connect(ctx.destination);
@@ -141,7 +162,10 @@ export function createAudio({ onError, volume = 1 } = {}) {
     }
     decoder = null;
 
-    ctx?.close().catch(() => {});
+    // O contexto é compartilhado com outras transmissões; só o nó desta é
+    // nosso para desligar. Fechar o contexto aqui derrubaria o som de quem
+    // mais estivesse assistindo.
+    ganho?.disconnect();
     ctx = null;
     ganho = null;
     proximo = 0;
