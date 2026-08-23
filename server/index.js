@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
 import express from 'express';
+import compression from 'compression';
 import { WebSocketServer } from 'ws';
 
 import { signToken, verifyToken } from './tokens.js';
@@ -89,6 +90,14 @@ for (const id of ADMIN_IDS) {
 if (TEM_ADMIN) startSampling();
 
 const app = express();
+
+// Reforço, não a linha principal de defesa: quem segue o deploy recomendado
+// (docs/vps.md) já ganha isto do Caddy na frente, e o túnel rápido já ganha da
+// borda da Cloudflare. Mas nem todo mundo segue o caminho recomendado, e sem
+// isto aqui um Node exposto direto manda o bundle da Activity cru pela rede.
+// Não afeta o relay: WebSocket sobe por upgrade de socket, fora do `res` que
+// este middleware envolve — o vídeo já codificado nunca passa por aqui.
+app.use(compression());
 
 // O proxy do Discord entrega as requisições da Activity sob o prefixo /.proxy.
 // Se ele chega até aqui, toda rota vira 404 e o cliente espera para sempre por
