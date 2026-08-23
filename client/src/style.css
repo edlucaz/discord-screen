@@ -277,6 +277,16 @@ body {
   background: #000;
 }
 
+/* Preencher: opção de quem assiste, para quando a barra preta incomoda mais
+   que perder um pouco de borda. Sem aspect-ratio no tile (buildTile pula esse
+   passo neste modo), o item de grid já ocupa a célula inteira sozinho — cover
+   só decide como o vídeo se comporta dentro dela, cortando o excedente em vez
+   de sobrar fundo. */
+.tile-palco.tile-encher canvas,
+.tile-palco.tile-encher video {
+  object-fit: cover;
+}
+
 /* --------------------------------------------------- convite para assistir */
 
 .tile.sharing:has(.watch-prompt) {

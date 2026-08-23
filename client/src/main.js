@@ -89,6 +89,11 @@ let volumeAntes = volume || 1;
 // de quem assiste precisa sobreviver a isso.
 let activeSlot = null;
 let telaCheia = false;
+// Preferência de quem assiste: cortar as bordas em vez de sobrar fundo atrás
+// do vídeo, quando a proporção da tela de quem transmite não bate com a da
+// janela. Persiste porque é gosto de quem está do outro lado, não estado da
+// sala — ninguém quer reescolher a cada transmissão nova.
+let preencherTela = read('preencherTela') === '1';
 // O que o link da atividade pediu: qual tela no palco e se já em tela cheia.
 // Não dá para aplicar no arranque — a sala ainda não tem transmissão nenhuma, e
 // o render zera a escolha justamente nesse estado. Fica guardado até a tela
@@ -334,6 +339,13 @@ function renderGrid() {
 
   const noPalco = activeSlot !== null;
   $('fullscreen').hidden = !noPalco;
+  $('fitMode').hidden = !noPalco;
+  $('fitMode').classList.toggle('on', preencherTela);
+  $('fitMode').dataset.tip = preencherTela ? 'Ajustar sem cortar' : 'Preencher (corta as bordas)';
+  $('fitMode').setAttribute(
+    'aria-label',
+    preencherTela ? 'Ajustar sem cortar' : 'Preencher (corta as bordas)',
+  );
   // A classe vai no #app, e não na grade: quem sai do layout são as barras, que
   // são irmãs dela. Fica acima do `return` de sala vazia — senão as barras
   // continuariam flutuando sobre o painel de "ninguém na sala".
@@ -481,7 +493,12 @@ function buildTile(p, { palco = false, semVideo = false, slot: slotDado = null }
   // Sem isto, uma tela 16:9 dentro de um palco largo e baixo encolhia até caber
   // na altura e sobrava um retângulo preto ocupando metade da área.
   const medida = stream ? medidaDe(stream) : null;
-  if (palco && medida?.w) {
+  if (palco && preencherTela) {
+    // Sem aspect-ratio, o tile vira um item de grid comum e ocupa a célula
+    // inteira — é isso que dá ao cover uma área maior que a proporção do
+    // vídeo para cortar.
+    tile.classList.add('tile-encher');
+  } else if (palco && medida?.w) {
     tile.style.aspectRatio = `${medida.w} / ${medida.h}`;
   }
 
@@ -2447,6 +2464,13 @@ acordarBarras();
 $('fullscreen').addEventListener('click', () => {
   if (activeSlot === null) return;
   telaCheia = !telaCheia;
+  renderGrid();
+});
+
+$('fitMode').addEventListener('click', () => {
+  if (activeSlot === null) return;
+  preencherTela = !preencherTela;
+  store('preencherTela', preencherTela ? '1' : '0');
   renderGrid();
 });
 
