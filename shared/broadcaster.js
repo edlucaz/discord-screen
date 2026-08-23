@@ -643,6 +643,18 @@ export function createBroadcaster({
   }
 
   async function pickConfig(width, height) {
+    // Hardware por fora de tudo o resto. Sem pedir isto, `isConfigSupported`
+    // devolve `true` para qualquer perfil que o navegador consiga entregar —
+    // por software, se for só isso que existir — e a resposta não distingue os
+    // dois casos. Perfil High é o primeiro candidato abaixo, e é comum GPUs
+    // integradas não acelerarem High (só Main ou Baseline) num nível alto o
+    // bastante para 1080p60: sem o hint, essa combinação "funciona" e ninguém
+    // percebe que passou a rodar no x264 por software, competindo por CPU com
+    // o que quer que esteja rodando do lado de fora do navegador. Pedir
+    // `prefer-hardware` faz o próprio navegador recusar a configuração quando
+    // não há chip para ela, e o candidato seguinte — perfil mais baixo, ou
+    // outro codec — é que decide se ainda cabe em hardware.
+    //
     // O codec por fora, as opções por dentro. A ordem é a decisão inteira desta
     // função, e inverter os laços custou caro uma vez: com as opções por fora,
     // um H.264 que recusasse `bitrateMode` perdia para um VP8 que o aceitasse —
@@ -660,17 +672,20 @@ export function createBroadcaster({
     // troca de cena ele estoura o alvo com folga, e a rajada é justamente o que
     // entope o relay. Constante troca qualidade em cena difícil por um teto que
     // se cumpre.
-    for (const candidate of candidatos(width, height, fps)) {
-      for (const realtime of [true, false]) {
-        for (const constante of [true, false]) {
-          const cfg = { ...candidate, width, height, bitrate, framerate: fps };
-          if (realtime) cfg.latencyMode = 'realtime';
-          if (constante) cfg.bitrateMode = 'constant';
-          try {
-            const { supported } = await VideoEncoder.isConfigSupported(cfg);
-            if (supported) return cfg;
-          } catch {
-            // candidato inválido neste navegador; tenta o próximo
+    for (const hardwareAcceleration of ['prefer-hardware', undefined]) {
+      for (const candidate of candidatos(width, height, fps)) {
+        for (const realtime of [true, false]) {
+          for (const constante of [true, false]) {
+            const cfg = { ...candidate, width, height, bitrate, framerate: fps };
+            if (hardwareAcceleration) cfg.hardwareAcceleration = hardwareAcceleration;
+            if (realtime) cfg.latencyMode = 'realtime';
+            if (constante) cfg.bitrateMode = 'constant';
+            try {
+              const { supported } = await VideoEncoder.isConfigSupported(cfg);
+              if (supported) return cfg;
+            } catch {
+              // candidato inválido neste navegador; tenta o próximo
+            }
           }
         }
       }
