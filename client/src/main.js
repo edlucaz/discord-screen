@@ -89,6 +89,40 @@ let volumeAntes = volume || 1;
 // de quem assiste precisa sobreviver a isso.
 let activeSlot = null;
 let telaCheia = false;
+
+/**
+ * Fora do Discord, "tela cheia" também aciona a Fullscreen API de verdade —
+ * sem ela sobra barra de endereço e abas do navegador, e a palavra "cheia"
+ * fica só por conta do CSS. Dentro da Activity a moldura do Discord não daria
+ * esse espaço mesmo, e pedir ali não teria efeito nenhum: fica só o layout.
+ *
+ * Chamada a cada renderGrid, então precisa ser idempotente: pedir fullscreen
+ * de novo quando já se está nele (ou sair quando já se saiu) é ruído que o
+ * navegador ignora. O catch cobre o caso de vir fora de um gesto do usuário —
+ * um render assíncrono, por exemplo —, que todo navegador recusa em silêncio.
+ */
+function sincronizarFullscreenNativo(quer) {
+  if (inDiscord || !document.fullscreenEnabled) return;
+
+  const app = $('app');
+  const estaCheio = document.fullscreenElement === app;
+
+  if (quer && !estaCheio) app.requestFullscreen?.().catch(() => {});
+  else if (!quer && estaCheio) document.exitFullscreen?.().catch(() => {});
+}
+
+// Sai também quando o próprio navegador derruba o fullscreen por fora do
+// nosso botão — o Esc do sistema, ou o aviso que alguns navegadores mostram
+// com um botão "Sair". Sem isto o estado interno ficava "cheia" com a janela
+// já normal, e só um clique a mais no botão devolvia os dois ao mesmo lugar.
+document.addEventListener('fullscreenchange', () => {
+  if (inDiscord || !telaCheia) return;
+  if (document.fullscreenElement !== $('app')) {
+    telaCheia = false;
+    renderGrid();
+  }
+});
+
 // Preferência de quem assiste: cortar as bordas em vez de sobrar fundo atrás
 // do vídeo, quando a proporção da tela de quem transmite não bate com a da
 // janela. Persiste porque é gosto de quem está do outro lado, não estado da
@@ -208,14 +242,6 @@ function unwatchSlot(slot) {
 }
 
 // --------------------------------------------------------------------- grade
-
-/** Colunas aproximando o layout da call do Discord: quadrado, crescendo em passos. */
-function columnsFor(n) {
-  if (n <= 1) return 1;
-  if (n <= 4) return 2;
-  if (n <= 9) return 3;
-  return 4;
-}
 
 // Largura da barra lateral. É preferência de quem assiste, não estado da sala —
 // por isso vive no localStorage, e não no servidor.
@@ -349,7 +375,9 @@ function renderGrid() {
   // A classe vai no #app, e não na grade: quem sai do layout são as barras, que
   // são irmãs dela. Fica acima do `return` de sala vazia — senão as barras
   // continuariam flutuando sobre o painel de "ninguém na sala".
-  $('app').classList.toggle('cheia', noPalco && telaCheia);
+  const querCheia = noPalco && telaCheia;
+  $('app').classList.toggle('cheia', querCheia);
+  sincronizarFullscreenNativo(querCheia);
   // Dentro da sala as barras sempre flutuam, tendo transmissão ou não: a barra
   // não deve pular de lugar quando alguém começa a transmitir, e um dock que
   // muda de posição sozinho é a mesma barra parecendo duas.
@@ -387,7 +415,6 @@ function renderGrid() {
 
   if (!noPalco) {
     const entradas = entradasDoGrid();
-    grid.style.setProperty('--cols', columnsFor(entradas.length));
     grid.append(...entradas.map((e) => buildTile(e.p, { slot: e.slot }).el));
     return;
   }

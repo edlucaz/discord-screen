@@ -47,7 +47,13 @@ body {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(var(--cols, 1), minmax(0, 1fr));
+  /* auto-fit em vez de uma contagem fixa de colunas: a largura da janela entra
+     na conta junto com o número de pessoas, então uma sala de 4 numa janela
+     estreita ganha menos colunas do que a mesma sala maximizada — sem isso, o
+     antigo `repeat(N, ...)` calculado só pela contagem espremia N tiles pequenos
+     mesmo quando a janela mal tinha espaço para dois. 200px é o menor tile em
+     que o avatar (clamp em .avatar) ainda cabe sem cortar o nome embaixo. */
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   /* minmax(0, 1fr) e não 1fr: o mínimo automático das trilhas de grid é o
      tamanho do conteúdo, e sem isso a grade estoura a área e passa por cima
      da barra inferior. */
@@ -89,8 +95,11 @@ body {
    tudo igual numa grade condena a tela que importa ao tamanho de um avatar. A
    barra resolve as duas, e quem decide o equilíbrio é quem está assistindo.
 
-   Layout puro, sem Fullscreen API — funciona mesmo com a Permissions Policy
-   `fullscreen` negada ao iframe da Activity. */
+   Layout puro por CSS — funciona mesmo com a Permissions Policy `fullscreen`
+   negada ao iframe da Activity, que é onde isto sempre roda dentro do
+   Discord. Fora dele, `sincronizarFullscreenNativo` (main.js) soma a
+   Fullscreen API de verdade por cima deste mesmo layout — a classe `.cheia`
+   continua sendo a fonte da verdade visual nos dois casos. */
 .grid.palco {
   grid-template-columns: minmax(0, 1fr) 10px var(--strip, 300px);
   grid-template-rows: minmax(0, 1fr);
